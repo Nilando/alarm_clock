@@ -1,0 +1,9 @@
+TODO:
+- make time display in large format, with small seconds
+- allow setting day of week, date, month, and year
+- display day of week, date, month, and year
+- allow setting alarm frequency, hour and minute
+- display alarm setting
+- detect and play alarm sounds
+- turn off alarm
+- read & display temperature
