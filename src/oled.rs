@@ -5,20 +5,7 @@ use arduino_hal::i2c::Error as I2cError;
 // SSD1306 OLED I2C Address
 const OLED_ADDR: u8 = 0x3C;
 
-// Simple 5x7 font data for digits 0-9 and colon
-const FONT_5X7: [[u8; 5]; 11] = [
-    [0xBE, 0x51, 0x49, 0x45, 0x3E], // 0 
-    [0x00, 0x42, 0x7F, 0x40, 0x00], // 1
-    [0x42, 0x61, 0x51, 0x49, 0x46], // 2
-    [0x21, 0x41, 0x45, 0x4B, 0x31], // 3
-    [0x18, 0x14, 0x12, 0x7F, 0x10], // 4
-    [0x27, 0x45, 0x45, 0x45, 0x39], // 5
-    [0x3C, 0x4A, 0x49, 0x49, 0x30], // 6
-    [0x01, 0x71, 0x09, 0x05, 0x03], // 7
-    [0x36, 0x49, 0x49, 0x49, 0x36], // 8
-    [0x06, 0x49, 0x49, 0x29, 0x1E], // 9
-    [0x00, 0x36, 0x36, 0x00, 0x00], // : (colon)
-];
+static mut OLED_BUFFER: [u8; 1024] = [0; 1024];
 
 pub fn init_oled(i2c: &mut I2c) -> Result<(), I2cError> {
     let init_cmds = [
@@ -47,160 +34,170 @@ pub fn init_oled(i2c: &mut I2c) -> Result<(), I2cError> {
     Ok(())
 }
 
+pub fn display_time(i2c: &mut I2c, hours: u8, minutes: u8, seconds: u8, quick_mode: bool) -> Result<(), I2cError> {
+    if (seconds == 0 && minutes == 0) || !quick_mode {
+        display_seven_segment_number(i2c, 40, 20, 7,   0, 0, hours / 10);
+        display_seven_segment_number(i2c, 40, 20, 7,  25, 0, hours % 10);
+    }
+
+    if seconds == 0 || !quick_mode {
+        display_seven_segment_number(i2c, 40, 20, 7,  60, 0, minutes / 10);
+        display_seven_segment_number(i2c, 40, 20, 7,  85, 0, minutes % 10);
+    }
+
+    display_seven_segment_number(i2c, 7, 5,   1, 110, 0, seconds / 10);
+    display_seven_segment_number(i2c, 7, 5,   1, 117, 0, seconds % 10);
+
+
+    Ok(())
+}
+
+const OLED_HEIGHT: u8 = 64;
+const OLED_WIDTH: u8 = 128;
+
 pub fn clear_oled(i2c: &mut I2c) -> Result<(), I2cError> {
-    i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 127])?;
-    // Set page address range 0-7
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 0, 7])?;
+    // Set full column/page address
+    i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 127])?; // column range
+    i2c.write(OLED_ADDR, &[0x00, 0x22, 0, 7])?;   // page range
 
-    // Clear all pages
-    for _ in 0..1024 {
-        i2c.write(OLED_ADDR, &[0x40, 0x00])?;
+    unsafe {
+        for i in 0..1024 {
+            OLED_BUFFER[i] = 0;
+        }
+        i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 127])?; // column range
+        i2c.write(OLED_ADDR, &[0x00, 0x22, 0, 1])?;   // page range
+
+        for _ in 0..256 {
+            i2c.write(OLED_ADDR, &[0x40, 0])?;
+        }
+
+        arduino_hal::delay_ms(10);
+
+        i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 127])?; // column range
+        i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 7])?;   // page range
+
+        for _ in 256..1024 {
+            i2c.write(OLED_ADDR, &[0x40, 0])?;
+        }
     }
 
     Ok(())
 }
 
-pub fn display_time(i2c: &mut I2c, hours: u8, minutes: u8, seconds: u8) -> Result<(), I2cError> {
-    // set column address
-    i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 19])?;
-    // Set page address
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 7])?;
+fn display_seven_segment_number(
+    i2c: &mut I2c,
+    height: u8,
+    width: u8,
+    thickness: u8,
+    x: u8,
+    y: u8,
+    number: u8,
+) {
+    let start_page = 7 - ((y + height) / 8);
+    let end_page = 7 - (y / 8);
+    let start_col = x;
+    let end_col = x + width;
+    for page in start_page..=end_page {
+        for col in start_col..=end_col {
+            let idx = (page as usize) * 128 + col as usize;
 
-    // Write character data
-    for _ in 0..6 {
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
-        for _ in 0..12 {
-            i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-        }
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
+            unsafe {
+                OLED_BUFFER[idx] = 0;
+            }
         }
     }
 
-    // set column address
-    i2c.write(OLED_ADDR, &[0x00, 0x21, 26, 45])?;
-    // Set page address
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 7])?;
+    // 7-segment mapping (segments: 0 to 6)
+    let segments_map: [u8; 10] = [
+        0b00111111, // 0
+        0b00011000, // 1
+        0b01101110, // 2
+        0b01111100, // 3
+        0b01011001, // 4
+        0b01110101, // 5
+        0b01110111, // 6
+        0b00011100, // 7
+        0b01111111, // 8
+        0b01111101, // 9
+    ];
 
-    // Write character data
-    for _ in 0..6 {
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
-        for _ in 0..12 {
-            i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-        }
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
+    let segments = segments_map[number as usize];
+
+
+    // Segment coordinates
+    if segments & 0b00000001 != 0 {
+        draw_vertical(x, y + (height / 2), height / 2, thickness); // segment 0 (top-left)
+    }
+    if segments & 0b00000010 != 0 {
+        draw_vertical(x, y, height / 2, thickness); // segment 1 (bottom-left)
+    }
+    if segments & 0b00000100 != 0 {
+        draw_horizontal(x, y + height - thickness, width, thickness); // segment 2 (top)
+    }
+    if segments & 0b00001000 != 0 {
+        draw_vertical(x + width - thickness, y + (height / 2), height / 2, thickness); // segment 3 (top-right)
+    }
+    if segments & 0b00010000 != 0 {
+        draw_vertical(x + width - thickness, y, height / 2, thickness); // segment 4 (bottom-right)
+    }
+    if segments & 0b00100000 != 0 {
+        draw_horizontal(x, y, width, thickness); // segment 5 (bottom)
+    }
+    if segments & 0b01000000 != 0 {
+        draw_horizontal(x, y + (height / 2) - (thickness / 2), width, thickness); // segment 6 (middle)
     }
 
-    // set column address
-    i2c.write(OLED_ADDR, &[0x00, 0x21, 52, 71])?;
-    // Set page address
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 7])?;
+    i2c.write(OLED_ADDR, &[0x00, 0x21, start_col, end_col]); // column range
+    i2c.write(OLED_ADDR, &[0x00, 0x22, start_page, end_page]);   // page range
+                                                                 
+    for page in start_page..=end_page {
+        for col in start_col..=end_col {
+            let idx = (page as usize) * 128 + col as usize;
 
-    // Write character data
-    for _ in 0..6 {
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
-        for _ in 0..12 {
-            i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-        }
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
+            unsafe {
+                i2c.write(OLED_ADDR, &[0x40, OLED_BUFFER[idx]]);
+            }
         }
     }
-
-    // set column address
-    i2c.write(OLED_ADDR, &[0x00, 0x21, 76, 95])?;
-    // Set page address
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 7])?;
-
-    // Write character data
-    for _ in 0..6 {
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
-        for _ in 0..12 {
-            i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-        }
-        for _ in 0..4 {
-            i2c.write(OLED_ADDR, &[0x40, 0xFF])?;
-        }
-    }
-
-    i2c.write(OLED_ADDR, &[0x40, 0x11])?;
-
-    Ok(())
 }
 
-fn draw_char(i2c: &mut I2c, c: u8, x: u8, page: u8) -> Result<(), I2cError> {
-    let char_index = if c >= b'0' && c <= b'9' {
-        (c - b'0') as usize
-    } else if c == b':' {
-        10
-    } else {
-        // TODO: turn this into a error
-        return Ok(());
-    };
+// the below logic is inefficient/could be optimized, but also its working plenty fast for this use
+// case.
 
-    // set column address
-    i2c.write(OLED_ADDR, &[0x00, 0x21, x, x + 5])?;
-    // Set page address
-    i2c.write(OLED_ADDR, &[0x00, 0x22, 2, 3])?;
-
-    // Write character data
-    for &byte in &FONT_5X7[char_index] {
-        i2c.write(OLED_ADDR, &[0x40, byte])?;
-    }
-
-    // Add spacing
-    i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-
-    for &byte in &FONT_5X7[char_index] {
-        i2c.write(OLED_ADDR, &[0x40, byte])?;
-    }
-    // Add spacing
-    i2c.write(OLED_ADDR, &[0x40, 0x00])?;
-
-    Ok(())
+fn set_pixel(bx: u8, by: u8) {
+        if bx >= OLED_WIDTH || by >= OLED_HEIGHT {
+            return;
+        }
+        let page = 7 - (by / 8);
+        let bit = 0x80 >> (by % 8);
+        let idx = (page as usize) * 128 + bx as usize;
+        
+        unsafe {
+            OLED_BUFFER[idx] |= bit;
+        }
 }
 
+// Draw horizontal line
+fn draw_horizontal(x0: u8, y0: u8, w: u8, thickness: u8) {
+    for t in 0..thickness {
+        for dx in 0..w {
+            set_pixel(x0 + dx, y0 + t);
+        }
+    }
 
-// INPUT: x: 0, y: 0, height: 10, width: 5, thickness: 1
-//
-// padded height = 16
-// width = 5
-//
-// calculate which segments need to be highlighted
-// calculate the indicies of each segment
-//
-//
-// segments 0, 1, 3, 4 should have height equal to height / 2;
-//
-// segments 0, starts at y + (height/2) & x = x
-//
-// you can turn on all the bits for a segment if you know the bottom left (x, y) & top right (x, y)
-//
-// segment 0 -> bottom left = (x, y + (height / 2)) & top right = (x + thickness, y + height)
-// segment 1 -> bottom left = (x, y) & top right = (x + thickness, y + (height/2))
-// segment 2 -> bottom left = (x, y) & top right = (x + width, y + thickness)
-// segment 3 -> bottom left = (x + width - thickness, y) & top right = (x + width, y + height)
-// segment 4 -> bottom left = (x + width - thickness, y + (height / 2)) & top right = (x + width, y + height)
-// segment 5 -> bottom left = (x, y + height - thickness) & top right = (x + width, y + height)
-// segment 6 -> bottom left = (x, y + (height/2) - (thickness/2)???) & top right = (x + width, y + (height/2) + (thickness/2))
-//
-//
-// so you need to be able to take your bits, and then draw in the bits to match
-//
-//
+    // OPTIMIZE: for each byte 
+    // if its the last byte, or first byte to special calculations, else just print a full thing of
+    // 1s
+}
 
-fn draw_seven_segment_char(i2c: &mut I2c, height: u8, width: u8, thickness: u8, x: u8, y: u8) {
-    // pad the height up to the next divisble by 8 height
-    // calculate the start page and the end page
-    // calculate the start col and end col
+// Draw vertical line
+fn draw_vertical(x0: u8, y0: u8, h: u8, thickness: u8) {
+    for t in 0..thickness {
+        for dy in 0..h {
+            set_pixel(x0 + t, y0 + dy);
+        }
+    }
+
+    // OPTIMIZE: for each byte 
+    // calculate what the byte looks like, then copy it across for every byte
 }

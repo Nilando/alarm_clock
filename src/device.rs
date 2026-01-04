@@ -84,6 +84,7 @@ impl Device {
         init_oled(&mut i2c)?;
         clear_oled(&mut i2c)?;
         set_time(&mut i2c, 21, 23, 0, 2, 29, 12, 25)?;
+        display_time(&mut i2c, 21, 23, 0,  false)?;
 
         Ok(Self {
             state: DeviceState::Running,
@@ -99,7 +100,7 @@ impl Device {
 
     pub fn main_loop(&mut self) -> Result<(), DeviceError> {
         loop {
-            arduino_hal::delay_ms(950);
+            arduino_hal::delay_ms(990);
 
             self.main_tick()?;
         }
@@ -139,7 +140,7 @@ impl Device {
         let (mut hours, mut minutes, day, date, month, year) = (0, 0, 1, 1, 1, 26);
 
         loop {
-            display_time(&mut self.i2c, hours, minutes, 0)?;
+            display_time(&mut self.i2c, hours, minutes, 0, false)?;
             arduino_hal::delay_ms(20);
 
             match state {
@@ -207,7 +208,7 @@ impl Device {
 
         let (hours, minutes, seconds, _day, _date, _month, _year) = read_time(&mut self.i2c)?;
 
-        display_time(&mut self.i2c, hours, minutes, seconds)?;
+        display_time(&mut self.i2c, hours, minutes, seconds, true)?;
 
         Ok(())
     }
