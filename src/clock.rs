@@ -13,6 +13,10 @@ const REG_DAY: u8 = 0x03;
 const REG_DATE: u8 = 0x04;
 const REG_MONTH: u8 = 0x05;
 const REG_YEAR: u8 = 0x06;
+const REG_ALARM: u8 = 0x07;
+const REG_CONTROL: u8 = 0x0E;
+const REG_STATUS: u8 = 0x0F;
+
 
 
 // Convert BCD to decimal
@@ -63,4 +67,40 @@ pub fn set_time(i2c: &mut I2c, hours: u8, minutes: u8, seconds: u8, day: u8, dat
     ];
 
     i2c.write(DS3231_ADDR, &data)
+}
+
+// Set time on DS3231
+pub fn set_alarm(i2c: &mut I2c, hours: u8, minutes: u8) -> Result<(), arduino_hal::i2c::Error> {
+    let data = [
+        REG_ALARM,
+        0x05, // seconds
+        0x80, // dec_to_bcd(minutes),
+        0x80, // dec_to_bcd(hours),
+        0x80, // date
+    ];
+
+    i2c.write(DS3231_ADDR, &data)?;
+
+    enable_alarm(i2c)
+}
+
+pub fn enable_alarm(i2c: &mut I2c) -> Result<(), arduino_hal::i2c::Error> {
+    let data = [
+        REG_CONTROL,
+        0b0001_1101,
+    ];
+
+    i2c.write(DS3231_ADDR, &data)
+}
+
+pub fn clear_alarm_flag(i2c: &mut I2c) -> Result<(), arduino_hal::i2c::Error> {
+    let mut status = [0u8];
+
+    i2c.write(DS3231_ADDR, &[REG_STATUS])?;
+    i2c.read(DS3231_ADDR, &mut status)?;
+
+    status[0] &= !0b0000_0001; // clear A1F
+
+    i2c.write(DS3231_ADDR, &[REG_STATUS, status[0]])?;
+    Ok(())
 }
