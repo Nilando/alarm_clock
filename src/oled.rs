@@ -34,20 +34,36 @@ pub fn init_oled(i2c: &mut I2c) -> Result<(), I2cError> {
     Ok(())
 }
 
+pub fn display_date(i2c: &mut I2c, date: u8, month: u8, year: u8) -> Result<(), I2cError> {
+    if (date / 10) != 0 {
+        display_seven_segment_number(i2c, 14, 8, 3, 20, 8 * 6, date / 10);
+    }
+    display_seven_segment_number(i2c, 14, 8, 3, 30, 8 * 6, date % 10);
+
+    if (month / 10) != 0 {
+        display_seven_segment_number(i2c, 14, 8, 3, 50, 8 * 6, month / 10);
+    }
+    display_seven_segment_number(i2c, 14, 8, 3, 60, 8 * 6, month % 10);
+
+    display_seven_segment_number(i2c, 14, 8, 3, 90, 8 * 6, year / 10);
+    display_seven_segment_number(i2c, 14, 8, 3, 100, 8 * 6, year % 10);
+
+    Ok(())
+}
+
 pub fn display_time(i2c: &mut I2c, hours: u8, minutes: u8, seconds: u8, quick_mode: bool) -> Result<(), I2cError> {
     if (seconds == 0 && minutes == 0) || !quick_mode {
-        display_seven_segment_number(i2c, 40, 20, 7,   0, 0, hours / 10);
-        display_seven_segment_number(i2c, 40, 20, 7,  25, 0, hours % 10);
+        display_seven_segment_number(i2c, 47, 20, 7,   0, 0, hours / 10);
+        display_seven_segment_number(i2c, 47, 20, 7,  25, 0, hours % 10);
     }
 
-    if seconds == 0 || !quick_mode {
-        display_seven_segment_number(i2c, 40, 20, 7,  60, 0, minutes / 10);
-        display_seven_segment_number(i2c, 40, 20, 7,  85, 0, minutes % 10);
+    if (seconds == 0) || (seconds == 1) || !quick_mode {
+        display_seven_segment_number(i2c, 47, 20, 7,  60, 0, minutes / 10);
+        display_seven_segment_number(i2c, 47, 20, 7,  85, 0, minutes % 10);
     }
 
-    display_seven_segment_number(i2c, 7, 5,   1, 110, 0, seconds / 10);
-    display_seven_segment_number(i2c, 7, 5,   1, 117, 0, seconds % 10);
-
+    display_seven_segment_number(i2c, 7, 5, 1, 110, 0, seconds / 10);
+    display_seven_segment_number(i2c, 7, 5, 1, 117, 0, seconds % 10);
 
     Ok(())
 }
