@@ -2,6 +2,8 @@ use arduino_hal::prelude::*;
 use arduino_hal::I2c;
 use arduino_hal::i2c::Error as I2cError;
 
+use crate::device::AlarmFrequency;
+
 // SSD1306 OLED I2C Address
 const OLED_ADDR: u8 = 0x3C;
 
@@ -19,8 +21,8 @@ pub fn init_oled(i2c: &mut I2c) -> Result<(), I2cError> {
         0xA1, // Set segment remap
         0xC8, // COM scan direction
         0xDA, 0x12, // COM hardware config
-        0x81, 0xCF, // Set contrast
-        0xD9, 0xF1, // Set precharge
+        0x81, 0x01, // Set contrast
+        0xD9, 0x42, // Set precharge
         0xDB, 0x40, // Set VCOMH
         0xA4, // Display all on resume
         0xA6, // Normal display (not inverted)
@@ -34,15 +36,51 @@ pub fn init_oled(i2c: &mut I2c) -> Result<(), I2cError> {
     Ok(())
 }
 
-pub fn display_date(i2c: &mut I2c, date: u8, month: u8, year: u8) -> Result<(), I2cError> {
-    if (date / 10) != 0 {
-        display_seven_segment_number(i2c, 14, 8, 3, 20, 8 * 6, date / 10);
+pub fn display_frequency(i2c: &mut I2c, frequency: &AlarmFrequency) -> Result<(), I2cError> {
+    clear_top(i2c)?;
+
+    match frequency {
+        AlarmFrequency::On => {
+            display_seven_segment_number(i2c, 14, 8, 3, 30, 8 * 6, 0);
+            display_seven_segment_number(i2c, 14, 8, 3, 40, 8 * 6, 10);
+        }
+        AlarmFrequency::Off => {
+            display_seven_segment_number(i2c, 14, 8, 3, 30, 8 * 6, 0);
+            display_seven_segment_number(i2c, 14, 8, 3, 40, 8 * 6, 13);
+            display_seven_segment_number(i2c, 14, 8, 3, 50, 8 * 6, 13);
+        }
+        AlarmFrequency::Once => {
+            display_seven_segment_number(i2c, 14, 8, 3, 30, 8 * 6, 0);
+            display_seven_segment_number(i2c, 14, 8, 3, 40, 8 * 6, 10);
+            display_seven_segment_number(i2c, 14, 8, 3, 50, 8 * 6, 11);
+            display_seven_segment_number(i2c, 14, 8, 3, 60, 8 * 6, 12);
+        }
     }
+
+    Ok(())
+}
+
+pub fn clear_top(i2c: &mut I2c) -> Result<(), I2cError> {
+        for i in 0..256 {
+            unsafe {
+                OLED_BUFFER[i] = 0;
+            }
+        }
+        i2c.write(OLED_ADDR, &[0x00, 0x21, 0, 127])?; // column range
+        i2c.write(OLED_ADDR, &[0x00, 0x22, 0, 1])?;   // page range
+
+        for _ in 0..256 {
+            i2c.write(OLED_ADDR, &[0x40, 0])?;
+        }
+
+        Ok(())
+}
+
+pub fn display_date(i2c: &mut I2c, date: u8, month: u8, year: u8) -> Result<(), I2cError> {
+    display_seven_segment_number(i2c, 14, 8, 3, 20, 8 * 6, date / 10);
     display_seven_segment_number(i2c, 14, 8, 3, 30, 8 * 6, date % 10);
 
-    if (month / 10) != 0 {
-        display_seven_segment_number(i2c, 14, 8, 3, 50, 8 * 6, month / 10);
-    }
+    display_seven_segment_number(i2c, 14, 8, 3, 50, 8 * 6, month / 10);
     display_seven_segment_number(i2c, 14, 8, 3, 60, 8 * 6, month % 10);
 
     display_seven_segment_number(i2c, 14, 8, 3, 90, 8 * 6, year / 10);
@@ -123,9 +161,10 @@ fn display_seven_segment_number(
         }
     }
 
+    // o n c e f
     // 7-segment mapping (segments: 0 to 6)
-    let segments_map: [u8; 10] = [
-        0b00111111, // 0
+    let segments_map: [u8; 14] = [
+        0b00111111, // 0 & o
         0b00011000, // 1
         0b01101110, // 2
         0b01111100, // 3
@@ -135,6 +174,11 @@ fn display_seven_segment_number(
         0b00011100, // 7
         0b01111111, // 8
         0b01111101, // 9
+                    
+        0b00011111, // n
+        0b00100111, // c
+        0b01100111, // e
+        0b01000111, // f
     ];
 
     let segments = segments_map[number as usize];
