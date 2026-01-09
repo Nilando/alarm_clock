@@ -72,8 +72,8 @@ pub fn set_alarm(i2c: &mut I2c, hours: u8, minutes: u8) -> Result<(), arduino_ha
     let data = [
         REG_ALARM,
         0x00, // seconds
-        bcd_to_dec(minutes),
-        bcd_to_dec(hours),
+        dec_to_bcd(minutes),
+        dec_to_bcd(hours),
         0x80, // date
     ];
 
