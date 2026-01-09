@@ -390,7 +390,6 @@ impl Device {
     }
 
     fn alarm_state_tick(&mut self) -> Result<(), DeviceError> {
-        self.piezo_pin.set_high();
         if self.main_button_counter == 1 {
             self.state = DeviceState::Running;
 
@@ -401,6 +400,31 @@ impl Device {
             clear_alarm_flag(&mut self.i2c)?;
             self.piezo_pin.set_low();
             return Ok(());
+        }
+
+
+        if self.tick_counter <= 1000 {
+            if self.tick_counter % 2 == 0 {
+                self.piezo_pin.toggle();
+            }
+        } else if self.tick_counter <= 2000 {
+            if self.tick_counter % 4 == 0 {
+                self.piezo_pin.toggle();
+            }
+        } else if self.tick_counter <= 3000 {
+            self.piezo_pin.set_low();
+        } else if self.tick_counter <= 4000 {
+            if self.tick_counter % 6 == 0 {
+                self.piezo_pin.toggle();
+            }
+        } else if self.tick_counter <= 8000 {
+            self.piezo_pin.toggle();
+        } else if self.tick_counter <= 9000 {
+            if self.tick_counter % 7 == 0 {
+                self.piezo_pin.toggle();
+            }
+        } else {
+            self.piezo_pin.set_low();
         }
 
         if self.tick_counter % 1000 == 0 {
