@@ -1,6 +1,5 @@
 #![no_std]
 
-mod oled;
 mod clock;
 mod device;
 
