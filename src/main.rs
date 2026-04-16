@@ -2,14 +2,14 @@
 #![no_main]
 
 use alarm_clock::Device;
-use core::prelude::v1::Ok; 
+use core::prelude::v1::Ok;
 
 #[arduino_hal::entry]
 fn main() -> ! {
     loop {
-        match Device::init() {
+        let _ = match Device::init() {
             Ok(mut device) => device.main_loop(),
-            Err(err) => { Ok(()) }
+            Err(_) => { Ok(()) }
         };
     }
 }
