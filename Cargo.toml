@@ -7,8 +7,6 @@ edition = "2024"
 
 arduino-hal = { git = "https://github.com/Rahix/avr-hal.git", features = ["arduino-uno"]}
 panic-halt = "1.0.0"
-ufmt = "0.2.0"
-heapless = "0.7"
 
 [profile.dev]
 panic="abort"
