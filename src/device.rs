@@ -7,8 +7,8 @@ use arduino_hal::{
 };
 
 use crate::{
-    button_scanner::{BUTTON_MAX_VAL, ButtonScanner}, 
-    clock::{clear_alarm_flag, disable_alarm, enable_alarm, read_time, set_alarm, set_time}, 
+    button_scanner::{BUTTON_MAX_VAL, ButtonScanner},
+    clock::ClockController, 
     display::{DisplayChar, DisplayController}
 };
 
@@ -62,7 +62,6 @@ impl From<I2cError> for DeviceError {
 
 pub struct Device {
     state: DeviceState,
-    i2c: I2c,
     tick_counter: u32,
     //alarm_time: Time,
     //current_time: Time,
@@ -74,7 +73,7 @@ pub struct Device {
     display_controller: DisplayController,
     button_scanner: ButtonScanner,
     piezo_pin: Pin<Output, D11>,           // PB3
-    alarm_pin: Pin<Input<PullUp>, A3>,     // PC3
+    clock_controller: ClockController
 
 }
 
@@ -85,14 +84,6 @@ impl Device {
             Some(dp) => dp,
         };
         let pins = arduino_hal::pins!(dp);
-        let mut i2c = I2c::new(
-            dp.TWI,
-            pins.a4.into_pull_up_input(),  // SDA
-            pins.a5.into_pull_up_input(),  // SCL
-            50000, 
-        );
-        let mut piezo_pin: Pin<Output, D11> = pins.d11.into_output();
-        let alarm_pin: Pin<Input<PullUp>, A3> = pins.a3.into_pull_up_input(); 
         let display_controller = DisplayController::new(
             pins.d0.into_output(),
             pins.d1.into_output(),
@@ -108,14 +99,19 @@ impl Device {
             pins.d8.into_floating_input(),
             pins.d9.into_floating_input(),
         );
+        let mut clock_controller = ClockController::new(
+            I2c::new(
+                dp.TWI,
+                pins.a4.into_pull_up_input(),  // SDA
+                pins.a5.into_pull_up_input(),  // SCL
+                50000, 
+            ),
+            pins.a3.into_pull_up_input()
+        );
+        let mut piezo_pin: Pin<Output, D11> = pins.d11.into_output();
 
+        clock_controller.reset()?;
         piezo_pin.set_low();
-
-        set_time(&mut i2c, 0, 0, 0, 0, 01, 01, 26)?;
-        arduino_hal::delay_ms(1);
-        clear_alarm_flag(&mut i2c)?;
-        arduino_hal::delay_ms(1);
-        disable_alarm(&mut i2c)?;
 
         Ok(Self {
             state: DeviceState::Running,
@@ -125,11 +121,10 @@ impl Device {
             alarm_hours: 0,
             alarm_minutes: 0,
             frequency: AlarmFrequency::Off,
-            i2c,
             piezo_pin,
-            alarm_pin,
             display_controller,
-            button_scanner
+            button_scanner,
+            clock_controller
         })
     }
 
@@ -205,7 +200,7 @@ impl Device {
     }
 
     fn running_state_tick(&mut self) -> Result<(), DeviceError> {
-        if self.alarm_pin.is_low() {
+        if self.clock_controller.is_alarm_triggered() {
             self.state = DeviceState::Alarm;
             return Ok(());
         }
@@ -257,7 +252,7 @@ impl Device {
                 }
             }
             DeviceState::UpdateTime(UpdateTimeState::Complete) => {
-                set_time(&mut self.i2c, self.hours, self.minutes, 0, 0, 1, 1, 26)?;
+                self.clock_controller.set_time(self.hours, self.minutes, 0, 0, 1, 1, 26)?;
                 self.state = DeviceState::Running;
             }
             _ => {}
@@ -321,14 +316,14 @@ impl Device {
             DeviceState::UpdateAlarm(UpdateTimeState::Complete) => {
                 match self.frequency {
                     AlarmFrequency::Off => {
-                        disable_alarm(&mut self.i2c)?;
+                        self.clock_controller.disable_alarm()?;
                     }
                     AlarmFrequency::On | AlarmFrequency::Once => {
-                        enable_alarm(&mut self.i2c)?;
+                        self.clock_controller.enable_alarm()?;
                         arduino_hal::delay_ms(1);
-                        set_alarm(&mut self.i2c, self.alarm_hours, self.alarm_minutes)?;
+                        self.clock_controller.set_alarm(self.alarm_hours, self.alarm_minutes)?;
                         arduino_hal::delay_ms(1);
-                        clear_alarm_flag(&mut self.i2c)?;
+                        self.clock_controller.clear_alarm_flag()?;
                     }
                 }
 
@@ -345,10 +340,10 @@ impl Device {
             self.state = DeviceState::Running;
 
             if let AlarmFrequency::Once = self.frequency {
-                disable_alarm(&mut self.i2c)?;
+                self.clock_controller.disable_alarm()?;
             }
 
-            clear_alarm_flag(&mut self.i2c)?;
+            self.clock_controller.clear_alarm_flag()?;
             self.piezo_pin.set_low();
             return Ok(());
         }
@@ -440,7 +435,7 @@ impl Device {
         match &self.state {
             DeviceState::UpdateTime(_) => {}
             _ => if self.tick_counter % 4096 == 0 {
-                if let Ok((h, m, _, _, _, _, _)) = read_time(&mut self.i2c) {
+                if let Ok((h, m, _, _, _, _, _)) = self.clock_controller.read_time() {
                     self.hours = h;
                     self.minutes = m;
                 }
