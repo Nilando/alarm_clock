@@ -118,7 +118,7 @@ impl Device {
         disable_alarm(&mut i2c)?;
 
         Ok(Self {
-            state: DeviceState::Alarm,
+            state: DeviceState::Running,
             tick_counter: 0,
             hours: 0,
             minutes: 0,
